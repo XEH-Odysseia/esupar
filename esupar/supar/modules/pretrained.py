@@ -63,7 +63,6 @@ class TransformerEmbedding(nn.Module):
                                    with_head=False,
                                    use_safetensors=False)
             self.bert.set_active_adapters(adapter_name)
-            print("active adapters:", self.bert.active_adapters)
         else:
             from transformers import AutoModel
             self.bert = AutoModel.from_pretrained(
