@@ -325,8 +325,15 @@ class Esupar(object):
     v["offset_mapping"]=w
     return v
 
-def load(model="ja",lemma=None):
+def load(model="ja",
+         lemma=None,
+         use_adapter=False,
+         adapter_path=None,
+         adapter_name="historical_ko"):
   if model in MODELS:
     model=MODELS[model]
-  return Esupar(model,lemma)
-
+  return Esupar(model,
+                lemma,
+                use_adapter=use_adapter,
+                adapter_path=adapter_path,
+                adapter_name=adapter_name)
