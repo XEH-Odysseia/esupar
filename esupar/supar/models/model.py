@@ -2,9 +2,11 @@
 
 import torch
 import torch.nn as nn
-from esupar.supar.modules import (CharLSTM, ELMoEmbedding, IndependentDropout,
-                           SharedDropout, TransformerEmbedding,
-                           VariationalLSTM)
+from esupar.supar.modules import (
+    CharLSTM, ELMoEmbedding, IndependentDropout,
+    SharedDropout, TransformerEmbedding,
+    VariationalLSTM
+)
 from esupar.supar.utils import Config
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
@@ -38,6 +40,9 @@ class Model(nn.Module):
                  n_lstm_layers=3,
                  encoder_dropout=.33,
                  pad_index=0,
+                 use_adapter=False,
+                 adapter_path=None,
+                 adapter_name="historical_ko",
                  **kwargs):
         super().__init__()
 
@@ -79,7 +84,10 @@ class Model(nn.Module):
                                                        pooling=bert_pooling,
                                                        pad_index=bert_pad_index,
                                                        dropout=mix_dropout,
-                                                       requires_grad=(not freeze))
+                                                       requires_grad=(not freeze),
+                                                       use_adapter=use_adapter,
+                                                       adapter_path=adapter_path,
+                                                       adapter_name=adapter_name)
                 n_input += self.bert_embed.n_out
             self.embed_dropout = IndependentDropout(p=embed_dropout)
         if encoder == 'lstm':
@@ -96,10 +104,12 @@ class Model(nn.Module):
                                                 pooling=bert_pooling,
                                                 pad_index=pad_index,
                                                 dropout=mix_dropout,
-                                                requires_grad=True)
+                                                requires_grad=True,
+                                                use_adapter=use_adapter,
+                                                adapter_path=adapter_path,
+                                                adapter_name=adapter_name)
             self.encoder_dropout = nn.Dropout(p=encoder_dropout)
             self.args.n_hidden = self.encoder.n_out
-
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed.to(self.args.device))
@@ -116,12 +126,10 @@ class Model(nn.Module):
 
     def embed(self, words, feats):
         ext_words = words
-        # set the indices larger than num_embeddings to unk_index
         if hasattr(self, 'pretrained'):
             ext_mask = words.ge(self.word_embed.num_embeddings)
             ext_words = words.masked_fill(ext_mask, self.args.unk_index)
 
-        # get outputs from embedding layers
         word_embed = self.word_embed(ext_words)
         if hasattr(self, 'pretrained'):
             pretrained = self.pretrained(words)
@@ -141,15 +149,20 @@ class Model(nn.Module):
             feat_embeds.append(self.bert_embed(feats.pop(0)))
         if 'lemma' in self.args.feat:
             feat_embeds.append(self.lemma_embed(feats.pop(0)))
+
         word_embed, feat_embed = self.embed_dropout(word_embed, torch.cat(feat_embeds, -1))
-        # concatenate the word and feat representations
         embed = torch.cat((word_embed, feat_embed), -1)
 
         return embed
 
     def encode(self, words, feats=None):
         if self.args.encoder == 'lstm':
-            x = pack_padded_sequence(self.embed(words, feats), words.ne(self.args.pad_index).sum(1).tolist(), True, False)
+            x = pack_padded_sequence(
+                self.embed(words, feats),
+                words.ne(self.args.pad_index).sum(1).tolist(),
+                True,
+                False
+            )
             x, _ = self.encoder(x)
             x, _ = pad_packed_sequence(x, True, total_length=words.shape[1])
         else:
