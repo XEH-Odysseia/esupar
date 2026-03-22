@@ -35,13 +35,40 @@ class TransformerEmbedding(nn.Module):
         https://github.com/huggingface/transformers
     """
 
-    def __init__(self, model, n_layers, n_out=0, stride=256, pooling='mean', pad_index=0, dropout=0, requires_grad=False):
+    def __init__(self,
+                 model,
+                 n_layers,
+                 n_out=0,
+                 stride=256,
+                 pooling='mean',
+                 pad_index=0,
+                 dropout=0,
+                 requires_grad=False,
+                 use_adapter=False,
+                 adapter_path=None,
+                 adapter_name="historical_ko"):
         super().__init__()
 
-        from transformers import AutoConfig, AutoModel, AutoTokenizer
-        self.bert = AutoModel.from_pretrained(model, config=AutoConfig.from_pretrained(model, output_hidden_states=True))
-        self.bert = self.bert.requires_grad_(requires_grad)
+        from transformers import AutoConfig, AutoTokenizer
 
+        if use_adapter:
+            from adapters import AutoAdapterModel
+            self.bert = AutoAdapterModel.from_pretrained(
+                model,
+                config=AutoConfig.from_pretrained(model, output_hidden_states=True),
+                use_safetensors=False)
+            self.bert.load_adapter(adapter_path,
+                                   load_as=adapter_name,
+                                   set_active=True,
+                                   with_head=False,
+                                   use_safetensors=False)
+        else:
+            from transformers import AutoModel
+            self.bert = AutoModel.from_pretrained(
+                model,
+                config=AutoConfig.from_pretrained(model, output_hidden_states=True))
+
+        self.bert = self.bert.requires_grad_(requires_grad)
         self.model = model
         self.n_layers = n_layers or self.bert.config.num_hidden_layers
         self.hidden_size = self.bert.config.hidden_size
@@ -52,9 +79,7 @@ class TransformerEmbedding(nn.Module):
         self.requires_grad = requires_grad
         self.max_len = int(max(0, self.bert.config.max_position_embeddings) or 1e12) - 2
         self.stride = min(stride, self.max_len)
-
         self.tokenizer = AutoTokenizer.from_pretrained(model)
-
         self.scalar_mix = ScalarMix(self.n_layers, dropout)
         self.projection = nn.Linear(self.hidden_size, self.n_out, False) if self.hidden_size != n_out else nn.Identity()
 
