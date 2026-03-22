@@ -37,88 +37,134 @@ MODELS={
 }
 
 class Esupar(object):
-  def __init__(self,model,lemma=None):
-    import os,numpy
-    from transformers import AutoTokenizer,AutoModelForTokenClassification
+  def __init__(
+    self,
+    model,
+    lemma=None,
+    use_adapter=False,
+    adapter_path=None,
+    adapter_name="historical_ko",
+):
+    import os, numpy
+    from transformers import AutoTokenizer, AutoModelForTokenClassification
     from esupar.supar import Parser
+
     try:
-      from transformers.utils import cached_file
+        from transformers.utils import cached_file
     except:
-      from transformers.file_utils import cached_path,hf_bucket_url
-      cached_file=lambda x,y:cached_path(hf_bucket_url(x,y))
-    self.tokenizer=AutoTokenizer.from_pretrained(model)
+        from transformers.file_utils import cached_path, hf_bucket_url
+        cached_file = lambda x, y: cached_path(hf_bucket_url(x, y))
+
+    self.tokenizer = AutoTokenizer.from_pretrained(model)
+
     try:
-      self.tokenizerfast=self.tokenizer.is_fast
+        self.tokenizerfast = self.tokenizer.is_fast
     except:
-      self.tokenizerfast=(str(type(self.tokenizer)).find("TokenizerFast")>0)
+        self.tokenizerfast = (str(type(self.tokenizer)).find("TokenizerFast") > 0)
+
     if not self.tokenizerfast:
-      try:
-        if self.tokenizer.word_tokenizer_type=="mecab":
-          from esupar.mecab import BertMecabTokenizerFast
-          self.tokenizer=BertMecabTokenizerFast.from_pretrained(model)
-          self.tokenizerfast=True
-      except:
-        pass
-    self.tagger=AutoModelForTokenClassification.from_pretrained(model)
-    f=os.path.join(model,"esupar.model")
-    if os.path.isfile(f):
-      self.parser=Parser.load(f,safe_tensor=True)
-    else:
-      try:
-        f=cached_file(model,"esupar.model")
-        self.parser=Parser.load(f,safe_tensor=True)
-      except:
-        f=None
-    if not f:
-      f=os.path.join(model,"supar.model")
-      if os.path.isfile(f):
-        self.parser=Parser.load(f)
-      else:
-        self.parser=Parser.load(cached_file(model,"supar.model"))
-    try:
-      for x in self.parser.transform.flattened_fields:
-        if x.fn:
-          x.fn=lambda t:" "+t
-    except:
-      pass
-    x=self.tagger.config.id2label
-    self.labelmatrix=numpy.full((len(x),len(x)),numpy.nan)
-    d=numpy.array([numpy.nan if x[i].startswith("I-") else 0 for i in range(len(x))])
-    for i in range(len(x)):
-      if x[i].startswith("B-"):
         try:
-          self.labelmatrix[i,self.tagger.config.label2id["I-"+x[i][2:]]]=0
+            if self.tokenizer.word_tokenizer_type == "mecab":
+                from esupar.mecab import BertMecabTokenizerFast
+                self.tokenizer = BertMecabTokenizerFast.from_pretrained(model)
+                self.tokenizerfast = True
         except:
-          self.labelmatrix[i]=0
-      else:
-        self.labelmatrix[i]=d
-        if x[i].startswith("I-"):
-          self.labelmatrix[i,i]=0
-    if not lemma in {"copy","tradify","simplify","hangul","ainu","none"}:
-      try:
-        lemma=self.tagger.config.task_specific_params["esupar_lemmatize"]
-      except:
-        pass
-    if lemma=="copy":
-      self.lemma=lambda x:x
-    elif lemma=="tradify":
-      from esupar.tradify import tradify
-      self.lemma=lambda x:"".join(tradify[c] if c in tradify else c for c in x)
-    elif lemma=="simplify":
-      from esupar.simplify import simplify
-      self.lemma=lambda x:"".join(simplify[c] if c in simplify else c for c in x)
-    elif lemma=="hangul":
-      from esupar.hangul import hangul
-      self.hangul={}
-      for k,v in hangul.items():
-        for c in "".join(v).replace("(","").replace(")",""):
-          self.hangul[c]=k
-      self.lemma=lambda x:"".join(self.hangul[c] if c in self.hangul else c for c in x)
-    elif lemma=="ainu":
-      from esupar.ainu import Lemmatize
-      self.lemma=Lemmatize()
+            pass
+
+    self.tagger = AutoModelForTokenClassification.from_pretrained(model)
+
+    # Save adapter setting
+    self.use_adapter = use_adapter
+    self.adapter_path = adapter_path
+    self.adapter_name = adapter_name
+
+    f = os.path.join(model, "esupar.model")
+    if os.path.isfile(f):
+        self.parser = Parser.load(
+            f,
+            safe_tensor=True,
+            use_adapter=use_adapter,
+            adapter_path=adapter_path,
+            adapter_name=adapter_name,
+        )
     else:
-      self.lemma=lambda x:"_"
+        try:
+            f = cached_file(model, "esupar.model")
+            self.parser = Parser.load(
+                f,
+                safe_tensor=True,
+                use_adapter=use_adapter,
+                adapter_path=adapter_path,
+                adapter_name=adapter_name,
+            )
+        except:
+            f = None
+
+    if not f:
+        f = os.path.join(model, "supar.model")
+        if os.path.isfile(f):
+            self.parser = Parser.load(
+                f,
+                use_adapter=use_adapter,
+                adapter_path=adapter_path,
+                adapter_name=adapter_name,
+            )
+        else:
+            self.parser = Parser.load(
+                cached_file(model, "supar.model"),
+                use_adapter=use_adapter,
+                adapter_path=adapter_path,
+                adapter_name=adapter_name,
+            )
+
+    try:
+        for x in self.parser.transform.flattened_fields:
+            if x.fn:
+                x.fn = lambda t: " " + t
+    except:
+        pass
+
+    x = self.tagger.config.id2label
+    self.labelmatrix = numpy.full((len(x), len(x)), numpy.nan)
+    d = numpy.array([numpy.nan if x[i].startswith("I-") else 0 for i in range(len(x))])
+
+    for i in range(len(x)):
+        if x[i].startswith("B-"):
+            try:
+                self.labelmatrix[i, self.tagger.config.label2id["I-" + x[i][2:]]] = 0
+            except:
+                self.labelmatrix[i] = 0
+        else:
+            self.labelmatrix[i] = d
+            if x[i].startswith("I-"):
+                self.labelmatrix[i, i] = 0
+
+    if not lemma in {"copy", "tradify", "simplify", "hangul", "ainu", "none"}:
+        try:
+            lemma = self.tagger.config.task_specific_params["esupar_lemmatize"]
+        except:
+            pass
+
+    if lemma == "copy":
+        self.lemma = lambda x: x
+    elif lemma == "tradify":
+        from esupar.tradify import tradify
+        self.lemma = lambda x: "".join(tradify[c] if c in tradify else c for c in x)
+    elif lemma == "simplify":
+        from esupar.simplify import simplify
+        self.lemma = lambda x: "".join(simplify[c] if c in simplify else c for c in x)
+    elif lemma == "hangul":
+        from esupar.hangul import hangul
+        self.hangul = {}
+        for k, v in hangul.items():
+            for c in "".join(v).replace("(", "").replace(")", ""):
+                self.hangul[c] = k
+        self.lemma = lambda x: "".join(self.hangul[c] if c in self.hangul else c for c in x)
+    elif lemma == "ainu":
+        from esupar.ainu import Lemmatize
+        self.lemma = Lemmatize()
+    else:
+        self.lemma = lambda x: "_"
   def __call__(self,sentence):
     import torch,unicodedata
     if self.tokenizerfast:
