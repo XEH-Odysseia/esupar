@@ -173,35 +173,15 @@ class Parser(object):
     def load(cls, path, reload=False, src='github', checkpoint=False, **kwargs):
         r"""
         Loads a parser with data fields and pretrained model parameters.
-
-        Args:
-            path (str):
-                - a string with the shortcut name of a pretrained model defined in ``supar.MODEL``
-                  to load from cache or download, e.g., ``'biaffine-dep-en'``.
-                - a local path to a pretrained model, e.g., ``./<path>/model``.
-            reload (bool):
-                Whether to discard the existing cache and force a fresh download. Default: ``False``.
-            src (str):
-                Specifies where to download the model.
-                ``'github'``: github release page.
-                ``'hlt'``: hlt homepage, only accessible from 9:00 to 18:00 (UTC+8).
-                Default: ``'github'``.
-            checkpoint (bool):
-                If ``True``, loads all checkpoint states to restore the training process. Default: ``False``.
-            kwargs (dict):
-                A dict holding unconsumed arguments for updating training configs and initializing the model.
-
-        Examples:
-            >>> from esupar.supar import Parser
-            >>> parser = Parser.load('biaffine-dep-en')
-            >>> parser = Parser.load('./ptb.biaffine.dep.lstm.char')
         """
-
-        args = Config(**locals())
+    
+        args = Config(path=path, reload=reload, src=src, checkpoint=checkpoint, **kwargs)
         args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
         if not os.path.exists(path):
             path = download(supar.MODEL[src].get(path, path), reload=reload)
-        if "safe_tensor" in kwargs and kwargs["safe_tensor"]==True:
+    
+        if "safe_tensor" in kwargs and kwargs["safe_tensor"] == True:
             import safetensors.torch
             import pickle
             state_dict = safetensors.torch.load_file(path)
@@ -211,12 +191,15 @@ class Parser(object):
             import dill as esupar_dill
             esupar_dill.Unpickler = EsuparUnpickler
             state = torch.load(path, pickle_module=esupar_dill, weights_only=False)
+    
         cls = supar.PARSER[state['name']] if cls.NAME is None else cls
         args = state['args'].update(args)
+    
         model = cls.MODEL(**args)
         model.load_pretrained(state['pretrained'])
         model.load_state_dict(state['state_dict'], False)
         model.to(args.device)
+
         transform = state['transform']
         parser = cls(args, model, transform)
         parser.checkpoint_state_dict = state['checkpoint_state_dict'] if args.checkpoint else None
