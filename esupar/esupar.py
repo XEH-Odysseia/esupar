@@ -76,48 +76,17 @@ class Esupar(object):
         self.adapter_path = adapter_path
         self.adapter_name = adapter_name
 
-        # 1) local file first
-        f = os.path.join(model, "esupar.model")
-        if os.path.isfile(f):
-            self.parser = Parser.load(
-                f,
-                safe_tensor=True,
-                use_adapter=use_adapter,
-                adapter_path=adapter_path,
-                adapter_name=adapter_name,
-            )
-        else:
-            # 2) Directly download from HF Hub
-            try:
-                f = hf_hub_download(repo_id=model, filename="esupar.model")
-                self.parser = Parser.load(
-                    f,
-                    safe_tensor=True,
-                    use_adapter=use_adapter,
-                    adapter_path=adapter_path,
-                    adapter_name=adapter_name,
-                )
-            except Exception:
-                f = None
+        parser_path = os.path.join(model, "esupar.model")
+        if not os.path.isfile(parser_path):
+            parser_path = hf_hub_download(repo_id=model, filename="esupar.model")
 
-        # 3) fallback: supar.model
-        if not f:
-            f = os.path.join(model, "supar.model")
-            if os.path.isfile(f):
-                self.parser = Parser.load(
-                    f,
-                    use_adapter=use_adapter,
-                    adapter_path=adapter_path,
-                    adapter_name=adapter_name,
-                )
-            else:
-                f = hf_hub_download(repo_id=model, filename="supar.model")
-                self.parser = Parser.load(
-                    f,
-                    use_adapter=use_adapter,
-                    adapter_path=adapter_path,
-                    adapter_name=adapter_name,
-                )
+        self.parser = Parser.load(
+            parser_path,
+            safe_tensor=True,
+            use_adapter=use_adapter,
+            adapter_path=adapter_path,
+            adapter_name=adapter_name,
+        )
 
         # Keep the original code
         try:
