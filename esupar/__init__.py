@@ -1,1 +1,1 @@
-from .esupar import load
+from .esupar import Esupar, load
